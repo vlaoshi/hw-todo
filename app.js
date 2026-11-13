@@ -15,6 +15,7 @@
    10. XP와 진화 처리
    10-1. 미니 다마고치 & 완료 카운트다운
    11. 할 일 기능 (추가 / 완료 / 수정 / 삭제 / 초기화)
+   11-1. 날짜 기능 (날짜 이동 / 넘기기 / 접속 시 지난 일 가져오기)
    12. 화면 다시 그리기 (render)
    13. 이벤트 연결
    14. 앱 시작 & 로그인 화면
@@ -97,9 +98,14 @@ const XP_RULES = {
   COMPLETE: 20,  // 할 일 완료 시 +20
   UNCHECK: -20,  // 완료 해제 시 -20 (회수)
   GIVE_UP: -10,  // 미완료 할 일 삭제(포기) 시 -10
+  CARRY: -5,     // 할 일을 다음 날(또는 오늘)로 넘길 때마다 -5
+  DUE_BONUS: 5,  // 마감일 당일까지 완료하면 보너스 +5 (해제하면 함께 회수)
 };
 
-// 미완료 할 일이 이 개수 이상이면 '다크서클/배고픔' 상태
+// 같은 할 일을 이 횟수 이상 넘기면 다마고치가 잔소리를 해요.
+const CARRY_NAG_COUNT = 3;
+
+// '오늘 못 한 일 + 마감 지난 일'이 이 개수 이상이면 '다크서클/배고픔' 상태
 const TIRED_THRESHOLD = 5;
 
 // 할 일 글자 수 제한 (index.html의 maxlength와 같게)
@@ -371,8 +377,29 @@ const MESSAGES = {
     "휴~ 이제 좀 살 것 같아요! 😌",
     "다크서클이 사라졌어요! 고마워요!",
   ],
+  // 할 일 넘기기 (1~2번째)
+  carry: [
+    "내일의 나에게 맡길게요… 🫠",
+    "알겠어요, 다음에 꼭 해요! (XP -5)",
+    "미루는 것도 계획이죠… 아마도요?",
+  ],
+  // 같은 할 일을 여러 번 넘길 때 잔소리 ({n}은 넘긴 횟수로 바뀌어요)
+  carryNag: [
+    "이거 벌써 {n}번째 미루는 거예요… 🥲",
+    "{n}번째 이사 중인 할 일… 짐 싸기도 지쳤대요!",
+    "할 일이 '또 나야?' 하고 쳐다봐요. ({n}번째)",
+    "{n}번이나 미뤘으면 오늘은 해치울 때예요! 💪",
+  ],
+  // 마감 전에 완료 (보너스)
+  bonus: [
+    "마감 전에 끝냈어요! 보너스 +5 🎁",
+    "약속을 지키는 갓생러! 보너스 간식까지 냠냠 🍬",
+  ],
+  // 마감일이 하는 날보다 앞일 때
+  dueInvalid: "마감일은 하는 날과 같거나 그 뒤로 정해 주세요 📅",
   // 가만히 있을 때 혼잣말
   idle: [
+    "◀ ▶ 버튼으로 다른 날짜의 할 일도 볼 수 있어요!",
     "오늘 할 일은 뭐예요?",
     "할 일을 완료하면 밥을 먹을 수 있어요!",
     "심심해요~ 할 일 하나 해치울까요?",
@@ -770,8 +797,10 @@ function getLoginErrorMessage(error) {
 const state = {
   uid: null,        // 현재 사용자 아이디 (로그인 전에는 null)
   user: null,       // 현재 사용자 정보 { uid, displayName, isGuest }
-  profile: null,    // { xp, stage, createdAt, updatedAt }
-  todos: [],        // 할 일 배열
+  profile: null,    // { xp, stage, createdAt, updatedAt, lastCheckInDate }
+  todos: [],        // 할 일 배열 (모든 날짜)
+  selectedDate: "", // 지금 화면에 보고 있는 날짜 "YYYY-MM-DD"
+  lastSeenDay: "",  // 마지막으로 확인한 '오늘' 날짜 (자정이 지났는지 알아내는 데 사용)
   filter: "all",    // 현재 필터: all | active | done
   tempMood: null,   // 잠깐 동안만 보여 줄 표정 (happy, eating, shocked)
   soundOn: true,    // 효과음 켜짐 여부
@@ -818,6 +847,19 @@ const els = {
   soundState: $("soundState"),
   todoForm: $("todoForm"),
   todoInput: $("todoInput"),
+  dueInput: $("dueInput"),
+  // 날짜 이동
+  prevDayBtn: $("prevDayBtn"),
+  nextDayBtn: $("nextDayBtn"),
+  todayBtn: $("todayBtn"),
+  dateLabel: $("dateLabel"),
+  dateRelative: $("dateRelative"),
+  // 접속 시 '지난 일 가져오기' 창
+  checkinModal: $("checkinModal"),
+  checkinDesc: $("checkinDesc"),
+  checkinList: $("checkinList"),
+  checkinBringBtn: $("checkinBringBtn"),
+  checkinSkipBtn: $("checkinSkipBtn"),
   filterButtons: document.querySelectorAll(".filter"),
   countAll: $("countAll"),
   countActive: $("countActive"),
@@ -873,9 +915,68 @@ function getStageIndex(xp) {
   return index;
 }
 
-// 미완료 할 일 개수
+/*
+  ▼ 날짜 도우미 함수
+  - 날짜는 "2026-11-13" 같은 글자(문자열)로 저장해요.
+    글자로 저장하면 시간대 걱정이 없고, 크기 비교("2026-11-12" < "2026-11-13")도 바로 돼요.
+  - 모든 날짜는 사용자 기기의 시간(한국이면 한국 시간) 기준이에요.
+*/
+
+// Date 객체 → "YYYY-MM-DD"
+function toDateStr(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+// "YYYY-MM-DD" → Date 객체 (그날 0시)
+function fromDateStr(str) {
+  const [y, m, d] = str.split("-").map(Number);
+  return new Date(y, m - 1, d);
+}
+
+// 오늘 날짜 "YYYY-MM-DD"
+function todayStr() {
+  return toDateStr(new Date());
+}
+
+// 날짜에 n일 더하기 (빼려면 음수)
+function addDays(str, n) {
+  const date = fromDateStr(str);
+  date.setDate(date.getDate() + n);
+  return toDateStr(date);
+}
+
+// 두 날짜 사이의 일수 (to - from). 예: daysBetween("2026-11-13", "2026-11-15") = 2
+function daysBetween(from, to) {
+  const [y1, m1, d1] = from.split("-").map(Number);
+  const [y2, m2, d2] = to.split("-").map(Number);
+  return Math.round((Date.UTC(y2, m2 - 1, d2) - Date.UTC(y1, m1 - 1, d1)) / 86400000);
+}
+
+// "2026-11-15" → "11/15"
+function formatShort(str) {
+  const [, m, d] = str.split("-").map(Number);
+  return `${m}/${d}`;
+}
+
+// "2026-11-13" → "11월 13일 (금)"
+function formatLong(str) {
+  const date = fromDateStr(str);
+  const week = ["일", "월", "화", "수", "목", "금", "토"][date.getDay()];
+  return `${date.getMonth() + 1}월 ${date.getDate()}일 (${week})`;
+}
+
+// 마감일이 지났는가? (완료하지 않았고, 마감일이 오늘보다 앞)
+function isOverdue(todo, today = todayStr()) {
+  return !todo.done && !!todo.dueDate && todo.dueDate < today;
+}
+
+// 다마고치 배고픔 개수 = 오늘 못 한 일 + 마감 지난 일 (중복 없이)
 function getPendingCount() {
-  return state.todos.filter((todo) => !todo.done).length;
+  const today = todayStr();
+  return state.todos.filter((todo) => !todo.done && (todo.date === today || isOverdue(todo, today))).length;
 }
 
 // 다크서클 상태인가?
@@ -1439,6 +1540,15 @@ function addTodo(text) {
     return;
   }
 
+  // 마감일(선택)은 하는 날과 같거나 그 뒤여야 해요.
+  const date = state.selectedDate; // 지금 보고 있는 날짜에 추가
+  const dueDate = els.dueInput.value || null;
+  if (dueDate && dueDate < date) {
+    playAnimation(els.dueInput, "is-error");
+    speak(MESSAGES.dueInvalid);
+    return;
+  }
+
   const wasTired = isTired();
   const now = Date.now();
   const todo = {
@@ -1448,10 +1558,16 @@ function addTodo(text) {
     createdAt: now,
     updatedAt: now,
     completedAt: null,
+    date,               // 하는 날 "YYYY-MM-DD"
+    dueDate,            // 마감일 "YYYY-MM-DD" 또는 null
+    originDate: date,   // 처음 계획한 날 (넘겨도 바뀌지 않아요)
+    carryCount: 0,      // 넘긴 횟수
+    bonusXp: 0,         // 완료할 때 받은 마감 보너스 (해제하면 회수하려고 기억해 둬요)
   };
 
   state.todos.unshift(todo); // 맨 위에 추가
   els.todoInput.value = "";
+  els.dueInput.value = "";
   render();
 
   // 다크서클로 바뀌었으면 그 대사를, 아니면 추가 대사를 해요.
@@ -1475,7 +1591,17 @@ function toggleTodo(id) {
   // 게임기가 안 보이는데 완료했다면 → 카운트다운 묶음 시작 (XP를 바꾸기 전에 화면 XP 고정)
   if (todo.done && !deviceVisible && !batch) startBatch();
 
-  const delta = todo.done ? XP_RULES.COMPLETE : XP_RULES.UNCHECK;
+  // XP 계산: 완료 +20 (+ 마감일 당일까지면 보너스 +5) / 해제하면 받은 만큼 모두 회수
+  let delta;
+  let gotBonus = false;
+  if (todo.done) {
+    gotBonus = !!todo.dueDate && todayStr() <= todo.dueDate;
+    todo.bonusXp = gotBonus ? XP_RULES.DUE_BONUS : 0;
+    delta = XP_RULES.COMPLETE + todo.bonusXp;
+  } else {
+    delta = XP_RULES.UNCHECK - (todo.bonusXp || 0);
+    todo.bonusXp = 0;
+  }
   const { oldStage, newStage } = applyXp(delta);
 
   if (batch) {
@@ -1491,7 +1617,8 @@ function toggleTodo(id) {
       // 이미 게임기로 올라가는 중이면 카운트다운은 다시 시작하지 않아요. (도착하면 함께 보여 줌)
       if (!batch.revealing) {
         restartCountdown();
-        speak(`냠! ${batch.count}개째 완료! ${COUNTDOWN_SECONDS}초 뒤에 보러 가요 👀`);
+        const bonusText = gotBonus ? " 마감 보너스 +5 🎁" : "";
+        speak(`냠! ${batch.count}개째 완료!${bonusText} ${COUNTDOWN_SECONDS}초 뒤에 보러 가요 👀`);
       }
     } else if (batch.count <= 0 && !batch.revealing) {
       // 모은 걸 다 해제했으면 카운트다운 취소
@@ -1511,7 +1638,9 @@ function toggleTodo(id) {
     // 완료: 밥 먹기 + 칭찬
     feedPet();
     playSound("eat");
-    if (!checkTiredChange(wasTired)) speak(pickRandom(MESSAGES.praise));
+    if (!checkTiredChange(wasTired)) {
+      speak(pickRandom(gotBonus ? MESSAGES.bonus : MESSAGES.praise));
+    }
     // 밥을 다 먹은 뒤에 진화하도록 조금 늦게 연출
     handleStageChange(oldStage, newStage, 1700);
   } else {
@@ -1528,6 +1657,7 @@ function toggleTodo(id) {
       done: todo.done,
       completedAt: todo.completedAt,
       updatedAt: todo.updatedAt,
+      bonusXp: todo.bonusXp,
     }),
     store.saveProfile(state.uid, state.profile)
   );
@@ -1571,12 +1701,14 @@ function deleteTodo(id, listItem) {
   }, 280);
 }
 
-// [수정] 글자 부분을 입력창으로 바꿔서 고칠 수 있게 해요.
+// [수정] 글자와 마감일을 고칠 수 있게 입력칸으로 바꿔요.
 function startEdit(listItem, id) {
   const todo = state.todos.find((t) => t.id === id);
   if (!todo || listItem.classList.contains("is-editing")) return;
 
   listItem.classList.add("is-editing");
+
+  // 1) 글자 → 글자 입력칸
   const textEl = listItem.querySelector(".todo-text");
   const input = document.createElement("input");
   input.type = "text";
@@ -1585,31 +1717,66 @@ function startEdit(listItem, id) {
   input.maxLength = MAX_TEXT_LENGTH;
   input.setAttribute("aria-label", "할 일 수정");
   textEl.replaceWith(input);
+
+  // 2) 마감일 입력칸 (비우면 마감일 없음)
+  const dueRow = document.createElement("label");
+  dueRow.className = "todo-edit-due";
+  dueRow.innerHTML = `<span>📅 마감일</span>`;
+  const dueEdit = document.createElement("input");
+  dueEdit.type = "date";
+  dueEdit.className = "due-input";
+  dueEdit.value = todo.dueDate || "";
+  dueEdit.min = todo.date;
+  dueEdit.setAttribute("aria-label", "마감일 수정 (비우면 없음)");
+  dueRow.appendChild(dueEdit);
+  listItem.querySelector(".todo-main").appendChild(dueRow);
+
   input.focus();
   input.select();
 
-  let finished = false; // Enter와 blur가 동시에 일어나도 한 번만 처리하려는 표시
+  let finished = false; // Enter와 포커스 이동이 동시에 일어나도 한 번만 처리하려는 표시
 
   const finish = (save) => {
     if (finished) return;
     finished = true;
 
     const newText = input.value.trim().slice(0, MAX_TEXT_LENGTH);
-    if (save && newText && newText !== todo.text) {
-      todo.text = newText;
+    let newDue = dueEdit.value || null;
+    if (newDue && newDue < todo.date) {
+      speak(MESSAGES.dueInvalid);
+      newDue = todo.dueDate; // 잘못된 마감일은 무시하고 원래대로
+    }
+
+    const textChanged = !!newText && newText !== todo.text;
+    const dueChanged = newDue !== (todo.dueDate || null);
+    if (save && (textChanged || dueChanged)) {
+      if (textChanged) todo.text = newText;
+      todo.dueDate = newDue;
       todo.updatedAt = Date.now();
       speak(pickRandom(MESSAGES.edit));
       playSound("click");
-      persist(store.updateTodo(state.uid, id, { text: newText, updatedAt: todo.updatedAt }));
+      persist(
+        store.updateTodo(state.uid, id, {
+          text: todo.text,
+          dueDate: todo.dueDate,
+          updatedAt: todo.updatedAt,
+        })
+      );
     }
-    renderList(); // 입력창을 다시 글자로 되돌려요
+    render(); // 입력칸을 다시 글자로 되돌려요 (마감일이 바뀌면 배고픔 수도 바뀔 수 있어서 전체 다시 그리기)
   };
 
   bindEnterKey(input, () => finish(true));
-  input.addEventListener("keydown", (e) => {
+  listItem.addEventListener("keydown", (e) => {
     if (e.key === "Escape") finish(false); // Esc: 취소
   });
-  input.addEventListener("blur", () => finish(true)); // 다른 곳 클릭: 저장
+  // 글자칸 ↔ 마감일칸 사이 이동은 괜찮고, 이 할 일 밖으로 포커스가 나가면 저장해요.
+  // (날짜 선택 달력이 열릴 때 잠깐 포커스가 흔들리는 경우가 있어서 0.15초 뒤에 다시 확인해요)
+  listItem.addEventListener("focusout", () => {
+    setTimeout(() => {
+      if (!listItem.contains(document.activeElement)) finish(true);
+    }, 150);
+  });
 }
 
 // [초기화] 시연용: 모든 데이터를 지우고 알부터 다시 시작
@@ -1627,14 +1794,228 @@ async function resetAll() {
 
   clearBatch(); // 카운트다운 중이었다면 취소
   state.profile = createDefaultProfile();
+  state.profile.lastCheckInDate = todayStr(); // 초기화 직후에 '지난 일 가져오기'를 묻지 않도록
   state.todos = [];
   state.filter = "all";
+  state.selectedDate = todayStr();
   state.tempMood = null;
   render();
   animatePet("is-evolving");
   speak(MESSAGES.reset);
   playSound("devolve");
   persist(store.saveProfile(state.uid, state.profile));
+}
+
+/* =========================================================
+   11-1. 날짜 기능 (날짜 이동 / 넘기기 / 접속 시 지난 일 가져오기)
+   ========================================================= */
+
+// 예전 버전에서 만든 할 일에 날짜 정보가 없으면 채워 줘요.
+// (만든 날짜를 '하는 날'로 정해요) → 바뀐 게 있으면 true
+function normalizeTodo(todo) {
+  let changed = false;
+  if (!todo.date) {
+    todo.date = toDateStr(new Date(todo.createdAt || Date.now()));
+    changed = true;
+  }
+  if (!todo.originDate) {
+    todo.originDate = todo.date;
+    changed = true;
+  }
+  if (todo.dueDate === undefined) {
+    todo.dueDate = null;
+    changed = true;
+  }
+  if (typeof todo.carryCount !== "number") {
+    todo.carryCount = 0;
+    changed = true;
+  }
+  if (typeof todo.bonusXp !== "number") {
+    todo.bonusXp = 0;
+    changed = true;
+  }
+  return changed;
+}
+
+// 날짜 이동 (◀ -1, ▶ +1)
+function moveDate(days) {
+  state.selectedDate = addDays(state.selectedDate, days);
+  renderFilters();
+  renderList();
+  renderDateNav();
+  playSound("click");
+}
+
+function goToday() {
+  state.selectedDate = todayStr();
+  renderFilters();
+  renderList();
+  renderDateNav();
+  playSound("click");
+}
+
+// 넘길 목적지: 지난 날 할 일 → 오늘, 오늘·미래 할 일 → 그다음 날
+function getCarryTarget(todo, today = todayStr()) {
+  return todo.date < today ? today : addDays(todo.date, 1);
+}
+
+// 넘기기 대사 (여러 번 넘기면 잔소리)
+function getCarryMessage(maxCount) {
+  if (maxCount >= CARRY_NAG_COUNT) {
+    return pickRandom(MESSAGES.carryNag).replace("{n}", String(maxCount));
+  }
+  return pickRandom(MESSAGES.carry);
+}
+
+// 할 일 하나를 날짜 이동 + 넘긴 횟수 +1 (XP는 부른 쪽에서 처리)
+function moveTodoTo(todo, target) {
+  todo.date = target;
+  todo.carryCount = (todo.carryCount || 0) + 1;
+  todo.updatedAt = Date.now();
+  return store.updateTodo(state.uid, todo.id, {
+    date: todo.date,
+    carryCount: todo.carryCount,
+    updatedAt: todo.updatedAt,
+  });
+}
+
+// [내일로 / 오늘로] 버튼
+function carryTodo(id, listItem) {
+  const todo = state.todos.find((t) => t.id === id);
+  if (!todo || todo.done || listItem.classList.contains("is-removing")) return;
+
+  const target = getCarryTarget(todo);
+  const leavesView = target !== state.selectedDate; // 지금 보는 날짜에서 사라지는지
+
+  const doCarry = () => {
+    const wasTired = isTired();
+    const saving = moveTodoTo(todo, target);
+    const { oldStage, newStage } = applyXp(XP_RULES.CARRY);
+    render();
+
+    // 다마고치 반응: 3번째부터는 충격 + 잔소리
+    if (todo.carryCount >= CARRY_NAG_COUNT) {
+      shockPet();
+      playSound("shock");
+    } else {
+      setTempMood("shocked", 900);
+      playSound("down");
+    }
+    const message = getCarryMessage(todo.carryCount);
+    if (!checkTiredChange(wasTired) || todo.carryCount >= CARRY_NAG_COUNT) speak(message);
+    if (!batch) handleStageChange(oldStage, newStage, 1200);
+
+    persist(saving, store.saveProfile(state.uid, state.profile));
+  };
+
+  if (leavesView) {
+    listItem.classList.add("is-removing"); // 옆으로 휙 사라진 뒤 이동
+    setTimeout(doCarry, 280);
+  } else {
+    doCarry();
+  }
+}
+
+// 접속 시 물어볼 '지난 날 못 한 일' 고르기
+// - 마지막으로 물어본 날(lastCheckInDate)부터 어제까지의 못 한 일만 골라요.
+//   그 전에 '그냥 두기'한 일은 다시 묻지 않아요.
+function getCheckInCandidates(today = todayStr()) {
+  const since = state.profile.lastCheckInDate || "0000-00-00";
+  return state.todos
+    .filter((t) => !t.done && t.date < today && t.date >= since)
+    .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : b.createdAt - a.createdAt));
+}
+
+// 하루에 한 번: 지난 날 못 한 일이 있으면 가져올지 물어봐요. 없으면 인사만 해요.
+function maybeCheckIn() {
+  const today = todayStr();
+  if (!state.uid || state.profile.lastCheckInDate === today) return false;
+
+  const candidates = getCheckInCandidates(today);
+  if (candidates.length === 0) {
+    state.profile.lastCheckInDate = today;
+    persist(store.saveProfile(state.uid, state.profile));
+    return false;
+  }
+  openCheckIn(candidates);
+  return true;
+}
+
+// '지난 일 가져오기' 창 열기
+function openCheckIn(candidates) {
+  els.checkinDesc.textContent = `지난 날 못 한 일이 ${candidates.length}개 있어요. 오늘로 가져올까요?`;
+  els.checkinList.innerHTML = "";
+
+  candidates.forEach((todo) => {
+    const li = document.createElement("li");
+    li.innerHTML = `
+      <label class="checkin__item">
+        <input type="checkbox" checked />
+        <span class="checkin__text"></span>
+        <span class="checkin__date"></span>
+      </label>`;
+    li.querySelector("input").value = todo.id;
+    li.querySelector(".checkin__text").textContent = todo.text; // 사용자 글자는 textContent로
+    const carried = todo.carryCount ? ` · ↪${todo.carryCount}` : "";
+    li.querySelector(".checkin__date").textContent = formatShort(todo.date) + carried;
+    els.checkinList.appendChild(li);
+  });
+
+  updateCheckInButton();
+  els.checkinModal.hidden = false;
+  els.checkinBringBtn.focus();
+}
+
+// 체크한 개수에 맞춰 '가져오기' 버튼 글자 바꾸기
+function updateCheckInButton() {
+  const count = els.checkinList.querySelectorAll("input:checked").length;
+  els.checkinBringBtn.disabled = count === 0;
+  els.checkinBringBtn.textContent =
+    count === 0 ? "가져올 할 일을 골라 주세요" : `${count}개 가져오기 (XP ${XP_RULES.CARRY * count})`;
+}
+
+// 창 닫기 + 결정 반영 (selectedIds: 가져올 할 일 id 목록, 빈 배열이면 '그냥 두기')
+function resolveCheckIn(selectedIds) {
+  els.checkinModal.hidden = true;
+  const today = todayStr();
+  const moved = state.todos.filter((t) => selectedIds.includes(t.id) && !t.done);
+
+  const savings = moved.map((todo) => moveTodoTo(todo, today));
+  state.profile.lastCheckInDate = today; // 오늘은 다시 묻지 않아요 (다른 기기에서도)
+  state.selectedDate = today;
+
+  if (moved.length === 0) {
+    render();
+    persist(store.saveProfile(state.uid, state.profile));
+    speak("알겠어요! 지난 일은 그 날짜에 그대로 둘게요. 오늘도 힘내요 💪");
+    return;
+  }
+
+  const { oldStage, newStage } = applyXp(XP_RULES.CARRY * moved.length);
+  render();
+  persist(...savings, store.saveProfile(state.uid, state.profile));
+
+  const maxCount = Math.max(...moved.map((t) => t.carryCount));
+  if (maxCount >= CARRY_NAG_COUNT) {
+    shockPet();
+    speak(getCarryMessage(maxCount));
+  } else {
+    setTempMood("shocked", 900);
+    speak(`지난 일 ${moved.length}개를 오늘로 가져왔어요! 오늘은 꼭 해치워요 🔥`);
+  }
+  playSound("down");
+  handleStageChange(oldStage, newStage, 1200);
+}
+
+// 화면을 켜 둔 채 자정이 지났다면: '오늘'을 새 날짜로 바꾸고 지난 일을 물어봐요.
+function checkDayChange() {
+  if (!state.uid || document.hidden) return;
+  const today = todayStr();
+  if (state.lastSeenDay === today) return;
+  if (state.selectedDate === state.lastSeenDay) state.selectedDate = today; // '오늘'을 보던 중이면 새 오늘로
+  state.lastSeenDay = today;
+  render();
+  maybeCheckIn();
 }
 
 /* =========================================================
@@ -1645,8 +2026,34 @@ async function resetAll() {
 function render() {
   renderStatus();
   renderPet();
+  renderDateNav();
   renderFilters();
   renderList();
+}
+
+// 날짜 이동 영역: "11월 13일 (금)" + 오늘/어제/내일 + [오늘로] 버튼
+function renderDateNav() {
+  const today = todayStr();
+  const diff = daysBetween(today, state.selectedDate);
+  const relative = { 0: "오늘", "-1": "어제", 1: "내일" }[diff];
+
+  els.dateLabel.textContent = formatLong(state.selectedDate);
+  els.dateRelative.textContent = relative || (diff < 0 ? `${-diff}일 전` : `${diff}일 뒤`);
+  els.dateRelative.classList.toggle("is-today", diff === 0);
+  els.todayBtn.hidden = diff === 0;
+
+  // 마감일 입력칸은 '하는 날'보다 앞 날짜를 고를 수 없게
+  els.dueInput.min = state.selectedDate;
+}
+
+// 지금 보고 있는 날짜의 할 일
+// - 오늘 화면에는 '다른 날짜에 있지만 마감이 지난 할 일'도 함께 보여 줘요. (배고픔 개수와 맞추려고)
+function getDayTodos() {
+  const today = todayStr();
+  const date = state.selectedDate;
+  return state.todos.filter(
+    (t) => t.date === date || (date === today && t.date < today && isOverdue(t, today))
+  );
 }
 
 // 레벨, 단계 이름, XP 게이지, 배고픔 표시
@@ -1679,8 +2086,9 @@ function renderStatus() {
 
 // 필터 버튼의 선택 상태와 개수
 function renderFilters() {
-  const total = state.todos.length;
-  const done = state.todos.filter((t) => t.done).length;
+  const dayTodos = getDayTodos();
+  const total = dayTodos.length;
+  const done = dayTodos.filter((t) => t.done).length;
 
   els.countAll.textContent = total;
   els.countActive.textContent = total - done;
@@ -1695,9 +2103,10 @@ function renderFilters() {
 
 // 현재 필터에 맞는 할 일만 골라요.
 function getFilteredTodos() {
-  if (state.filter === "active") return state.todos.filter((t) => !t.done);
-  if (state.filter === "done") return state.todos.filter((t) => t.done);
-  return state.todos;
+  const dayTodos = getDayTodos();
+  if (state.filter === "active") return dayTodos.filter((t) => !t.done);
+  if (state.filter === "done") return dayTodos.filter((t) => t.done);
+  return dayTodos;
 }
 
 // 할 일 목록 그리기
@@ -1710,8 +2119,9 @@ function renderList() {
   els.todoList.appendChild(fragment);
 
   // 비어 있을 때 필터에 맞는 안내 문구
+  const isPast = state.selectedDate < todayStr();
   const emptyTexts = {
-    all: "아직 할 일이 없어요. 첫 번째 밥(할 일)을 주세요! 🍙",
+    all: isPast ? "이 날은 할 일이 없었어요." : "아직 할 일이 없어요. 첫 번째 밥(할 일)을 주세요! 🍙",
     active: "남은 할 일이 없어요! 배불러요 😋",
     done: "아직 완료한 일이 없어요. 하나 해치워 볼까요?",
   };
@@ -1719,8 +2129,22 @@ function renderList() {
   els.emptyMessage.textContent = emptyTexts[state.filter];
 }
 
+// 마감일 표시 정보: { text, cls } 또는 null
+function getDueInfo(todo, today = todayStr()) {
+  if (!todo.dueDate) return null;
+  const short = formatShort(todo.dueDate);
+  if (todo.done) return { text: `📅 마감 ${short}`, cls: "" };
+
+  const left = daysBetween(today, todo.dueDate); // 마감까지 남은 일수
+  if (left < 0) return { text: `📅 마감 지남 (${short})`, cls: "is-over" };
+  if (left === 0) return { text: `📅 오늘 마감 (D-day)`, cls: "is-soon" };
+  if (left === 1) return { text: `📅 마감 ${short} (D-1)`, cls: "is-soon" };
+  return { text: `📅 마감 ${short} (D-${left})`, cls: "" };
+}
+
 // 할 일 한 줄(<li>) 만들기
 function createTodoElement(todo) {
+  const today = todayStr();
   const li = document.createElement("li");
   li.className = `todo-item${todo.done ? " is-done" : ""}`;
   li.dataset.id = todo.id;
@@ -1732,7 +2156,10 @@ function createTodoElement(todo) {
       <input type="checkbox" class="todo-check__input" ${todo.done ? "checked" : ""} />
       <span class="todo-check__box" aria-hidden="true"></span>
     </label>
-    <span class="todo-text" title="더블클릭해서 수정"></span>
+    <div class="todo-main">
+      <span class="todo-text" title="더블클릭해서 수정"></span>
+      <div class="todo-meta"></div>
+    </div>
     <div class="todo-actions">
       <button type="button" class="icon-btn" data-action="edit" aria-label="수정">✏️</button>
       <button type="button" class="icon-btn icon-btn--danger" data-action="delete" aria-label="삭제">🗑️</button>
@@ -1743,6 +2170,48 @@ function createTodoElement(todo) {
     "aria-label",
     `${todo.text} ${todo.done ? "완료 해제" : "완료"}`
   );
+
+  // --- 아래쪽 작은 표식들 (글자는 모두 앱이 만든 것이라 안전해요) ---
+  const meta = li.querySelector(".todo-meta");
+  const addBadge = (text, cls, action, label) => {
+    const el = document.createElement(action ? "button" : "span");
+    if (action) {
+      el.type = "button";
+      el.dataset.action = action;
+    }
+    el.className = `badge ${cls}`;
+    el.textContent = text;
+    if (label) el.setAttribute("aria-label", label);
+    meta.appendChild(el);
+  };
+
+  // ↪ 넘어온 표식 (누르면 처음 날짜를 알려 줘요)
+  if (todo.carryCount > 0) {
+    const text = todo.carryCount === 1 ? "↪ 넘어옴" : `↪ ${todo.carryCount}번째`;
+    const nag = todo.carryCount >= CARRY_NAG_COUNT ? " is-nag" : "";
+    addBadge(text, `badge--carry${nag}`, "carry-info", `${text}, 처음 날짜 보기`);
+  }
+
+  // 오늘 화면에 보이는 '다른 날의 마감 지난 일'에는 원래 날짜 표시
+  if (todo.date !== state.selectedDate) {
+    addBadge(`🗓️ ${formatShort(todo.date)}의 할 일`, "badge--from");
+  }
+
+  // 📅 마감일
+  const due = getDueInfo(todo, today);
+  if (due) addBadge(due.text, `badge--due ${due.cls}`);
+
+  // 내일로 / 오늘로 버튼 (못 한 일에만)
+  if (!todo.done) {
+    const toToday = todo.date < today;
+    const carry = document.createElement("button");
+    carry.type = "button";
+    carry.className = "carry-btn";
+    carry.dataset.action = "carry";
+    carry.textContent = toToday ? "오늘로 ➜" : "내일로 ➜";
+    carry.title = `${toToday ? "오늘로" : "다음 날로"} 넘기기 (XP ${XP_RULES.CARRY})`;
+    meta.appendChild(carry);
+  }
   return li;
 }
 
@@ -1798,8 +2267,14 @@ function bindEvents() {
     const button = e.target.closest("[data-action]");
     if (!button) return;
     const li = button.closest(".todo-item");
-    if (button.dataset.action === "edit") startEdit(li, li.dataset.id);
-    if (button.dataset.action === "delete") deleteTodo(li.dataset.id, li);
+    const action = button.dataset.action;
+    if (action === "edit") startEdit(li, li.dataset.id);
+    if (action === "delete") deleteTodo(li.dataset.id, li);
+    if (action === "carry") carryTodo(li.dataset.id, li);
+    if (action === "carry-info") {
+      const todo = state.todos.find((t) => t.id === li.dataset.id);
+      if (todo) speak(`${formatShort(todo.originDate)}에 계획했던 할 일이에요. 벌써 ${todo.carryCount}번 넘어왔어요!`);
+    }
   });
 
   // 글자를 더블클릭해도 수정
@@ -1808,6 +2283,22 @@ function bindEvents() {
     const li = e.target.closest(".todo-item");
     startEdit(li, li.dataset.id);
   });
+
+  // 날짜 이동
+  els.prevDayBtn.addEventListener("click", () => moveDate(-1));
+  els.nextDayBtn.addEventListener("click", () => moveDate(1));
+  els.todayBtn.addEventListener("click", goToday);
+
+  // 접속 시 '지난 일 가져오기' 창
+  els.checkinList.addEventListener("change", updateCheckInButton);
+  els.checkinBringBtn.addEventListener("click", () => {
+    const ids = [...els.checkinList.querySelectorAll("input:checked")].map((input) => input.value);
+    resolveCheckIn(ids);
+  });
+  els.checkinSkipBtn.addEventListener("click", () => resolveCheckIn([]));
+
+  // 다른 탭에 있다가 돌아왔을 때 날짜가 바뀌었는지 확인
+  document.addEventListener("visibilitychange", checkDayChange);
 
   // 필터 버튼
   els.filterButtons.forEach((btn) => {
@@ -1879,9 +2370,26 @@ async function startSession(user, storeImpl) {
     );
 
     // 처음 방문이면 새 프로필을 만들어 저장
-    state.profile = profile || createDefaultProfile();
+    // (처음 온 사람에게는 '지난 일 가져오기'를 물을 필요가 없으니 오늘 확인한 걸로 해 둬요)
+    state.profile = profile || { ...createDefaultProfile(), lastCheckInDate: todayStr() };
     state.todos = todos;
     if (!profile) persist(store.saveProfile(state.uid, state.profile));
+
+    // 예전 버전 할 일에 날짜 정보 채우기 (바뀐 것만 저장)
+    const migrated = todos.filter(normalizeTodo);
+    if (migrated.length) {
+      persist(
+        ...migrated.map((t) =>
+          store.updateTodo(state.uid, t.id, {
+            date: t.date,
+            originDate: t.originDate,
+            dueDate: t.dueDate,
+            carryCount: t.carryCount,
+            bonusXp: t.bonusXp,
+          })
+        )
+      );
+    }
 
     // 비밀번호는 화면에 남겨 두지 않아요.
     els.pwInput.value = "";
@@ -1902,6 +2410,8 @@ async function startSession(user, storeImpl) {
   clearBatch();
   state.filter = "all";
   state.tempMood = null;
+  state.selectedDate = todayStr();
+  state.lastSeenDay = todayStr();
   els.userInfo.textContent = user.isGuest
     ? "👤 체험 모드 (이 브라우저에만 저장)"
     : `👤 ${user.displayName}`;
@@ -1909,14 +2419,17 @@ async function startSession(user, storeImpl) {
   render();
   hideLoginGate();
 
-  // 인사하기
+  // 인사하기 (그 전에 오늘 처음 접속이면 '지난 일 가져오기'를 먼저 물어봐요)
   const stageLevel = STAGES[getStageIndex(state.profile.xp)].level;
   speak(isTired() ? pickRandom(MESSAGES.tired) : MESSAGES.greet[stageLevel]);
+  maybeCheckIn();
 }
 
 // 게임 끝내고 로그인 화면으로
 function endSession(message = "") {
   clearBatch();
+  els.checkinModal.hidden = true;
+  state.selectedDate = todayStr();
   state.user = null;
   state.uid = null;
   state.todos = [];
@@ -2051,6 +2564,7 @@ function init() {
 
   // 로그인 전에도 뒤쪽 화면이 비어 보이지 않도록 기본 알을 그려 둬요.
   state.profile = createDefaultProfile();
+  state.selectedDate = todayStr();
   render();
   watchDevice();
 
@@ -2078,6 +2592,8 @@ function init() {
 
   // 5초마다 확인해서, 오래 조용했으면 혼잣말
   setInterval(idleTalk, 5000);
+  // 1분마다 자정이 지났는지 확인 (화면을 켜 둔 채 날짜가 바뀌는 경우)
+  setInterval(checkDayChange, 60000);
 }
 
 init();

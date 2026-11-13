@@ -127,17 +127,36 @@
          2. 할 일(To-Do) 패널 영역
          ===================================================== -->
     <section class="panel" aria-label="할 일 목록">
-      <!-- 할 일 입력 폼 -->
-      <form class="todo-form" id="todoForm" autocomplete="off">
-        <label for="todoInput" class="sr-only">새 할 일</label>
-        <input
-          type="text"
-          id="todoInput"
-          class="todo-form__input"
-          maxlength="60"
-          placeholder="할 일을 적고 밥을 주세요! 🍎"
-        />
-        <button type="submit" class="todo-form__btn">추가</button>
+      <!-- 날짜 이동: ◀ 11월 13일 (금) · 오늘 ▶ -->
+      <div class="date-nav">
+        <button type="button" class="date-nav__btn" id="prevDayBtn" aria-label="이전 날">◀</button>
+        <div class="date-nav__center">
+          <strong class="date-nav__label" id="dateLabel" aria-live="polite">오늘</strong>
+          <span class="date-nav__rel" id="dateRelative"></span>
+          <button type="button" class="today-btn" id="todayBtn" hidden>오늘로 돌아가기</button>
+        </div>
+        <button type="button" class="date-nav__btn" id="nextDayBtn" aria-label="다음 날">▶</button>
+      </div>
+
+      <!-- 할 일 입력 폼: 지금 보고 있는 날짜에 추가돼요 -->
+      <!-- novalidate: 브라우저 기본 경고 대신 다마고치가 직접 안내해요 -->
+      <form class="todo-form" id="todoForm" autocomplete="off" novalidate>
+        <div class="todo-form__row">
+          <label for="todoInput" class="sr-only">새 할 일</label>
+          <input
+            type="text"
+            id="todoInput"
+            class="todo-form__input"
+            maxlength="60"
+            placeholder="할 일을 적고 밥을 주세요! 🍎"
+          />
+          <button type="submit" class="todo-form__btn">추가</button>
+        </div>
+        <!-- 마감일 (선택): 비워 두면 마감일 없음 -->
+        <div class="todo-form__row todo-form__row--sub">
+          <label for="dueInput" class="due-label">📅 마감일 <small>(선택)</small></label>
+          <input type="date" id="dueInput" class="due-input" />
+        </div>
       </form>
 
       <!-- 필터 버튼: 전체 / 진행중 / 완료 -->
@@ -161,7 +180,7 @@
 
       <!-- 패널 아래쪽 안내 -->
       <footer class="panel__footer">
-        <span>✅ 완료 +20 · ↩️ 해제 -20 · 🗑️ 포기 -10</span>
+        <span>✅ 완료 +20 · 🎁 마감 전 +5 · ➜ 넘기기 -5 · 🗑️ 포기 -10</span>
         <span class="user-box">
           <span id="userInfo">👤</span>
           <button type="button" class="link-btn" id="logoutBtn">로그아웃</button>
@@ -190,6 +209,23 @@
     <!-- +20 XP 같은 글자가 떠오르는 곳 -->
     <span class="mini-pet__effects" id="miniEffects" aria-hidden="true"></span>
   </button>
+
+  <!--
+    접속 시 '지난 일 가져오기' 창
+    - 하루에 한 번, 지난 날 못 한 일이 있으면 오늘로 가져올지 물어봐요.
+    - 체크한 할 일만 가져오고, 1개당 XP -5예요.
+  -->
+  <div class="checkin" id="checkinModal" hidden>
+    <div class="checkin__card" role="dialog" aria-modal="true" aria-labelledby="checkinTitle">
+      <div class="checkin__icon" aria-hidden="true">🌅</div>
+      <h2 class="checkin__title" id="checkinTitle">새로운 하루예요!</h2>
+      <p class="checkin__desc" id="checkinDesc"></p>
+      <ul class="checkin__list" id="checkinList"></ul>
+      <p class="checkin__note">가져오는 할 일 1개당 XP -5 · 안 가져온 일은 원래 날짜에 남아요</p>
+      <button type="button" class="login-btn" id="checkinBringBtn">가져오기</button>
+      <button type="button" class="login-btn login-btn--ghost" id="checkinSkipBtn">그냥 두기</button>
+    </div>
+  </div>
 
   <!-- 시연용 초기화 버튼 (왼쪽 아래 구석) -->
   <button type="button" class="reset-btn" id="resetBtn" title="XP와 할 일을 모두 지우고 알부터 다시 시작해요">

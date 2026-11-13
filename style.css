@@ -633,9 +633,115 @@ button {
 }
 
 /* 입력 폼 */
+/* --- 날짜 이동 영역 --- */
+.date-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+  padding: 8px;
+  background: #fbf6fd;
+  border: 2px solid var(--line);
+  border-radius: var(--radius-md);
+}
+
+.date-nav__btn {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  font-size: 14px;
+  color: var(--ink);
+  background: #fff;
+  border: 2px solid var(--lavender);
+  border-radius: 50%;
+  box-shadow: 0 3px 0 var(--lavender);
+  transition: transform 0.08s, box-shadow 0.08s;
+}
+
+.date-nav__btn:active {
+  transform: translateY(3px);
+  box-shadow: 0 0 0 var(--lavender);
+}
+
+.date-nav__center {
+  flex: 1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 4px 8px;
+  text-align: center;
+}
+
+.date-nav__label {
+  font-size: 18px;
+  font-weight: normal;
+}
+
+/* 오늘/어제/내일 꼬리표 */
+.date-nav__rel {
+  padding: 2px 8px;
+  font-size: 12px;
+  color: var(--ink-soft);
+  background: #fff;
+  border-radius: 999px;
+}
+
+.date-nav__rel.is-today {
+  color: #fff;
+  background: var(--pink-deep);
+}
+
+.today-btn {
+  padding: 3px 10px;
+  font-size: 12px;
+  color: var(--ink);
+  background: var(--yellow);
+  border: 0;
+  border-radius: 999px;
+}
+
+/* --- 할 일 입력 폼 (윗줄: 글자 + 추가 / 아랫줄: 마감일) --- */
 .todo-form {
   display: flex;
+  flex-direction: column;
   gap: 8px;
+}
+
+.todo-form__row {
+  display: flex;
+  gap: 8px;
+}
+
+.todo-form__row--sub {
+  align-items: center;
+  padding-left: 4px;
+}
+
+.due-label {
+  font-size: 14px;
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+
+.due-input {
+  min-width: 0;
+  padding: 6px 10px;
+  font-size: 16px; /* 16px 미만이면 아이폰에서 자동 확대돼요 */
+  color: var(--ink);
+  background: #fff;
+  border: 2px solid var(--lavender);
+  border-radius: 10px;
+  outline: none;
+}
+
+.due-input:focus {
+  border-color: #b79bc9;
+}
+
+.due-input.is-error {
+  animation: shake 0.4s linear;
+  border-color: #e5577e;
 }
 
 .todo-form__input {
@@ -721,7 +827,7 @@ button {
 
 .todo-item {
   display: flex;
-  align-items: center;
+  align-items: flex-start; /* 아래 표식 줄이 생겨도 체크박스는 위쪽에 */
   gap: 10px;
   padding: 10px 10px 10px 12px;
   background: #fffafc;
@@ -793,9 +899,15 @@ button {
   outline-offset: 2px;
 }
 
-.todo-text {
+/* 글자 + 표식 줄을 담는 가운데 영역 */
+.todo-main {
   flex: 1;
   min-width: 0;
+  padding-top: 3px;
+}
+
+.todo-text {
+  display: block;
   font-size: 16px;
   line-height: 1.35;
   word-break: break-word; /* 긴 영어/숫자도 줄바꿈 */
@@ -810,8 +922,7 @@ button {
 
 /* 수정 중 입력창 */
 .todo-edit {
-  flex: 1;
-  min-width: 0;
+  width: 100%;
   padding: 6px 8px;
   font-size: 16px;
   border: 2px solid var(--lavender);
@@ -841,6 +952,98 @@ button {
 
 .icon-btn--danger:hover {
   background: #ffe1e8;
+}
+
+/* 수정 중 마감일 줄 */
+.todo-edit-due {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+
+/* 수정 중에는 표식 줄을 숨겨요 */
+.todo-item.is-editing .todo-meta {
+  display: none;
+}
+
+/* --- 할 일 아래 작은 표식 줄 --- */
+.todo-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  margin-top: 5px;
+}
+
+.todo-meta:empty {
+  display: none;
+}
+
+.badge {
+  padding: 2px 8px;
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink-soft);
+  background: #f3f0f6;
+  border: 0;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+/* ↪ 넘어온 표식 */
+.badge--carry {
+  color: #6b55a3;
+  background: #ece4f7;
+  cursor: pointer;
+}
+
+/* 3번 이상 넘긴 할 일: 눈에 띄게 */
+.badge--carry.is-nag {
+  color: #fff;
+  background: #a58bd0;
+}
+
+/* 원래 날짜 표시 (다른 날의 마감 지난 일) */
+.badge--from {
+  background: #eef2f7;
+}
+
+/* 📅 마감일 */
+.badge--due {
+  color: #3c8a66;
+  background: #e3f6ec;
+}
+
+.badge--due.is-soon {
+  color: #a35b00;
+  background: #ffe9c7;
+}
+
+.badge--due.is-over {
+  color: #c2456b;
+  background: #ffdbe4;
+  font-weight: bold;
+}
+
+/* 내일로 ➜ 버튼 (오른쪽 끝) */
+.carry-btn {
+  margin-left: auto;
+  padding: 3px 10px;
+  font-size: 12px;
+  color: var(--ink);
+  background: var(--sky);
+  border: 0;
+  border-radius: 999px;
+  white-space: nowrap;
+  transition: filter 0.15s;
+}
+
+.carry-btn:hover {
+  filter: brightness(0.95);
 }
 
 /* 수정 중일 때는 수정 버튼을 숨겨요 */
@@ -1080,6 +1283,102 @@ button {
   font-size: 13px;
   line-height: 1.5;
   color: #c2456b;
+  word-break: keep-all;
+}
+
+/* ---------- 7-2. 접속 시 '지난 일 가져오기' 창 ---------- */
+.checkin {
+  position: fixed;
+  inset: 0;
+  z-index: 90; /* 로그인 화면(100)보다는 아래, 나머지보다는 위 */
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  overflow-y: auto;
+  background: rgba(253, 240, 246, 0.82);
+  backdrop-filter: blur(6px);
+}
+
+.checkin[hidden] {
+  display: none;
+}
+
+.checkin__card {
+  width: 100%;
+  max-width: 400px;
+  padding: 24px 22px 20px;
+  text-align: center;
+  background: #fff;
+  border: 4px solid var(--shell-edge);
+  border-radius: var(--radius-lg);
+  box-shadow:
+    0 8px 0 var(--shell-edge),
+    0 18px 40px rgba(244, 151, 182, 0.35);
+}
+
+.checkin__icon {
+  font-size: 44px;
+}
+
+.checkin__title {
+  margin: 6px 0 6px;
+  font-size: 20px;
+  font-weight: normal;
+}
+
+.checkin__desc {
+  margin: 0 0 14px;
+  font-size: 15px;
+  color: var(--ink-soft);
+  word-break: keep-all;
+}
+
+/* 할 일 목록 (많으면 안에서 스크롤) */
+.checkin__list {
+  max-height: 40vh;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+  text-align: left;
+}
+
+.checkin__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+  padding: 9px 12px;
+  background: #fffafc;
+  border: 2px solid var(--line);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.checkin__item input {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  accent-color: var(--pink-deep);
+}
+
+.checkin__text {
+  flex: 1;
+  min-width: 0;
+  font-size: 15px;
+  word-break: break-word;
+}
+
+.checkin__date {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+.checkin__note {
+  margin: 10px 0 4px;
+  font-size: 12px;
+  color: var(--ink-soft);
   word-break: keep-all;
 }
 
