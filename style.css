@@ -1,0 +1,1311 @@
+/* =========================================================
+   다마고치 투두 - style.css
+   ---------------------------------------------------------
+   구성 순서
+   0. 색상/크기 변수
+   1. 기본 초기화
+   2. 레이아웃
+   3. 게임기(device)
+   4. LCD 화면 (상태줄, XP, 말풍선)
+   5. 캐릭터(pet)와 반응 애니메이션
+   6. 효과 (음식, XP 글자, 진화 배너, 폭죽)
+   7. 할 일 패널 (입력, 필터, 목록)
+   8. 미니 다마고치
+   9. 초기화 버튼
+   10. 반응형 (900px 이상 2단 배치) / 움직임 줄이기 설정
+   ========================================================= */
+
+/* ---------- 0. 색상/크기 변수 ----------
+   :root에 변수를 모아 두면 색을 한 곳에서만 바꿔도 전체가 바뀌어요. */
+:root {
+  /* 파스텔 색상 팔레트 */
+  --pink: #ffc8dd;
+  --pink-deep: #f497b6;
+  --lavender: #cdb4db;
+  --mint: #a8e6cf;
+  --yellow: #ffe5a3;
+  --sky: #bde0fe;
+
+  /* 글자/선 색 */
+  --ink: #5b4a6b;
+  --ink-soft: #8a7a99;
+
+  /* 게임기와 LCD 화면 색 */
+  --shell: #ffd6e5;
+  --shell-edge: #f2a7c3;
+  --lcd: #e7f5d8;
+  --lcd-dark: #b9d6a3;
+
+  /* 카드(할 일 패널) */
+  --card: #ffffff;
+  --line: #f1e4ee;
+
+  /* 픽셀 한 칸 크기 (16칸 × 이 값 = 캐릭터 크기) */
+  --px: 8px;
+
+  /* 모서리 둥글기 */
+  --radius-lg: 32px;
+  --radius-md: 18px;
+  --radius-sm: 12px;
+
+  color-scheme: light;
+}
+
+/* ---------- 1. 기본 초기화 ---------- */
+* {
+  box-sizing: border-box; /* 테두리와 여백을 너비 계산에 포함 */
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  min-height: 100vh;
+  font-family: "Jua", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  color: var(--ink);
+  /* 파스텔 그라데이션 + 물방울 무늬 배경 */
+  background-color: #fdf0f6;
+  background-image:
+    radial-gradient(circle at 1px 1px, rgba(205, 180, 219, 0.35) 1.5px, transparent 0),
+    linear-gradient(160deg, #fdf0f6 0%, #eef6ff 55%, #f0fbf4 100%);
+  background-size: 22px 22px, 100% 100%;
+  background-attachment: fixed;
+}
+
+button,
+input {
+  font-family: inherit; /* 버튼/입력창도 같은 폰트 사용 */
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+/* 키보드로 이동할 때만 보이는 포커스 테두리 */
+:focus-visible {
+  outline: 3px solid var(--pink-deep);
+  outline-offset: 2px;
+}
+
+/* 화면에는 안 보이지만 화면낭독기는 읽는 글자 */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* ---------- 2. 레이아웃 ---------- */
+.app {
+  width: 100%;
+  max-width: 520px;
+  margin: 0 auto;
+  padding: 24px 16px 96px; /* 아래쪽은 초기화 버튼에 가리지 않도록 넉넉하게 */
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* ---------- 3. 게임기(device) ---------- */
+.device {
+  position: relative;
+  padding: 22px 22px 18px;
+  background: linear-gradient(180deg, #ffe3ee 0%, var(--shell) 100%);
+  border: 4px solid var(--shell-edge);
+  /* 위는 넓고 아래는 좁게 둥글려서 알 모양 게임기 느낌 */
+  border-radius: 48% 48% 40px 40px / 26% 26% 40px 40px;
+  box-shadow:
+    0 10px 0 var(--shell-edge),       /* 아래쪽 두께감 */
+    0 18px 30px rgba(244, 151, 182, 0.35),
+    inset 0 4px 0 rgba(255, 255, 255, 0.7);
+}
+
+.device__brand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin: 4px 0 12px;
+}
+
+.device__logo {
+  font-family: "Press Start 2P", monospace;
+  font-size: 14px;
+  letter-spacing: 2px;
+  color: #fff;
+  text-shadow: 2px 2px 0 var(--pink-deep);
+}
+
+.device__sub {
+  font-size: 12px;
+  color: var(--ink-soft);
+  margin-top: 6px;
+}
+
+/* 동그란 버튼 A, B, C */
+.device__buttons {
+  display: flex;
+  justify-content: center;
+  gap: 22px;
+  margin-top: 16px;
+}
+
+.device-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 3px solid var(--shell-edge);
+  background: radial-gradient(circle at 35% 30%, #fff 0%, var(--lavender) 70%);
+  font-family: "Press Start 2P", monospace;
+  font-size: 11px;
+  color: var(--ink);
+  box-shadow: 0 4px 0 var(--shell-edge);
+  transition: transform 0.08s, box-shadow 0.08s;
+}
+
+.device-btn:nth-child(2) {
+  background: radial-gradient(circle at 35% 30%, #fff 0%, var(--mint) 70%);
+}
+
+.device-btn:nth-child(3) {
+  background: radial-gradient(circle at 35% 30%, #fff 0%, var(--yellow) 70%);
+}
+
+/* 누르면 쏙 들어가는 효과 */
+.device-btn:active {
+  transform: translateY(4px);
+  box-shadow: 0 0 0 var(--shell-edge);
+}
+
+.device-btn.is-off {
+  opacity: 0.55;
+}
+
+.device__hint {
+  margin: 10px 0 0;
+  text-align: center;
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+/* ---------- 4. LCD 화면 ---------- */
+.screen {
+  position: relative;
+  overflow: hidden; /* 효과가 화면 밖으로 삐져나가지 않게 */
+  padding: 12px 14px 14px;
+  background-color: var(--lcd);
+  /* 옛날 LCD처럼 가는 가로줄 무늬 */
+  background-image: repeating-linear-gradient(
+    0deg,
+    rgba(0, 0, 0, 0.025) 0 2px,
+    transparent 2px 4px
+  );
+  border: 4px solid #fff;
+  border-radius: var(--radius-md);
+  box-shadow:
+    inset 0 0 0 3px var(--lcd-dark),
+    inset 0 6px 14px rgba(0, 0, 0, 0.08);
+  transition: background-color 0.6s;
+}
+
+/* 미완료 할 일이 많아 지친 상태: 화면이 살짝 칙칙해져요 */
+.screen.is-tired {
+  background-color: #dde3d3;
+}
+
+/* 지친 상태일 때 화면 구석에 '꼬르륵…' 글자가 떠다녀요 */
+.screen.is-tired::after {
+  content: "꼬르륵…";
+  position: absolute;
+  right: 14px;
+  bottom: 18px;
+  font-size: 13px;
+  color: var(--ink-soft);
+  animation: growl 2.4s ease-in-out infinite;
+}
+
+@keyframes growl {
+  0%, 100% { transform: translateY(0); opacity: 0.4; }
+  50% { transform: translateY(-6px); opacity: 1; }
+}
+
+/* 진화할 때 화면이 하얗게 번쩍 */
+.screen.is-flash {
+  animation: flash 0.9s ease-out;
+}
+
+@keyframes flash {
+  0%, 40% { background-color: #fff; }
+  100% { background-color: var(--lcd); }
+}
+
+/* 상태줄: 레벨 · 단계 이름 · 배고픔 */
+.screen__status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.level {
+  font-family: "Press Start 2P", monospace;
+  font-size: 11px;
+  padding: 5px 7px;
+  background: var(--ink);
+  color: var(--lcd);
+  border-radius: 6px;
+}
+
+.stage-name {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis; /* 이름이 길면 … 처리 */
+}
+
+.hunger {
+  font-size: 13px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.6);
+}
+
+/* 미완료가 많으면 배고픔 표시가 빨개져요 */
+.hunger.is-warning {
+  background: #ffd3dc;
+  color: #c2456b;
+}
+
+/* XP 게이지 */
+.xp {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.xp__bar {
+  flex: 1;
+  height: 14px;
+  padding: 2px;
+  background: #fff;
+  border: 2px solid var(--ink);
+  border-radius: 8px;
+}
+
+.xp__fill {
+  height: 100%;
+  width: 0%;
+  border-radius: 4px;
+  /* 칸칸이 나뉜 레트로 게이지 느낌 */
+  background: repeating-linear-gradient(
+    90deg,
+    var(--pink-deep) 0 8px,
+    #f7b3cb 8px 10px
+  );
+  transition: width 0.6s cubic-bezier(0.34, 1.56, 0.64, 1); /* 통통 튀며 차오르기 */
+}
+
+.xp__text {
+  min-width: 92px;
+  text-align: right;
+  font-family: "Press Start 2P", monospace;
+  font-size: 9px;
+  line-height: 1.4;
+}
+
+/* 말풍선 */
+.bubble {
+  position: relative;
+  margin: 14px auto 0;
+  max-width: 94%;
+  min-height: 46px;
+  padding: 10px 14px;
+  background: #fff;
+  border: 3px solid var(--ink);
+  border-radius: 16px;
+  text-align: center;
+  font-size: 15px;
+  line-height: 1.4;
+  word-break: keep-all; /* 한글 단어가 중간에 끊기지 않게 */
+}
+
+/* 말풍선 꼬리 (아래쪽 삼각형) - 테두리용 + 안쪽 흰색 2겹 */
+.bubble::before,
+.bubble::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  border-style: solid;
+}
+
+.bubble::before {
+  bottom: -14px;
+  border-width: 12px 10px 0;
+  border-color: var(--ink) transparent transparent;
+}
+
+.bubble::after {
+  bottom: -9px;
+  border-width: 9px 7px 0;
+  border-color: #fff transparent transparent;
+}
+
+/* 새 대사가 나올 때 뿅! */
+.bubble.is-pop {
+  animation: pop 0.35s ease-out;
+}
+
+@keyframes pop {
+  0% { transform: scale(0.85); }
+  60% { transform: scale(1.05); }
+  100% { transform: scale(1); }
+}
+
+/* ---------- 5. 캐릭터(pet) ---------- */
+.pet-stage {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-top: 12px;
+  min-height: calc(var(--px) * 16 + 24px);
+}
+
+/* 기본 상태: 위아래로 둥실둥실 */
+.pet-wrap {
+  animation: idle-bob 2.2s ease-in-out infinite;
+}
+
+@keyframes idle-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+
+/* 지친 상태에서는 느릿느릿 좌우로 흔들려요 */
+.screen.is-tired .pet-wrap {
+  animation: tired-sway 3.2s ease-in-out infinite;
+}
+
+@keyframes tired-sway {
+  0%, 100% { transform: rotate(-3deg) translateY(2px); }
+  50% { transform: rotate(3deg) translateY(2px); }
+}
+
+.pet {
+  display: block;
+  padding: 0;
+  border: 0;
+  background: none;
+  border-radius: 12px;
+}
+
+/* 16×16 픽셀 격자 */
+.pixel-grid {
+  display: grid;
+  grid-template-columns: repeat(16, var(--px));
+  grid-template-rows: repeat(16, var(--px));
+}
+
+/* 픽셀 한 칸 */
+.px {
+  display: block;
+  width: var(--px);
+  height: var(--px);
+}
+
+/* 5단계 전설 캐릭터의 반짝이 픽셀 */
+.px.is-sparkle {
+  animation: twinkle 1.2s steps(2) infinite;
+}
+
+@keyframes twinkle {
+  0% { opacity: 1; }
+  100% { opacity: 0.15; }
+}
+
+/* 5단계는 금빛으로 빛나요 */
+.pet-anim[data-stage="5"] {
+  filter: drop-shadow(0 0 6px rgba(255, 209, 102, 0.9));
+}
+
+/* 그림자 */
+.pet-shadow {
+  width: calc(var(--px) * 10);
+  height: 10px;
+  margin-top: 2px;
+  background: rgba(91, 74, 107, 0.15);
+  border-radius: 50%;
+}
+
+/* --- 반응 애니메이션들 (app.js가 잠깐 클래스를 붙였다 떼요. 큰 캐릭터와 미니 캐릭터 모두 pet-anim 클래스를 가져요) --- */
+
+/* 기뻐서 폴짝 */
+.pet-anim.is-happy {
+  animation: jump 0.6s ease-out 2;
+}
+
+@keyframes jump {
+  0%, 100% { transform: translateY(0) scale(1, 1); }
+  20% { transform: translateY(0) scale(1.1, 0.9); }
+  50% { transform: translateY(-18px) scale(0.95, 1.05); }
+  80% { transform: translateY(0) scale(1.05, 0.95); }
+}
+
+/* 냠냠 씹기 */
+.pet-anim.is-eating {
+  animation: chew 0.25s ease-in-out 4;
+}
+
+@keyframes chew {
+  0%, 100% { transform: scale(1, 1); }
+  50% { transform: scale(1.08, 0.92); }
+}
+
+/* 충격받아 덜덜 */
+.pet-anim.is-shocked {
+  animation: shake 0.5s linear 2;
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-6px) rotate(-4deg); }
+  40% { transform: translateX(6px) rotate(4deg); }
+  60% { transform: translateX(-4px); }
+  80% { transform: translateX(4px); }
+}
+
+/* 진화: 빙글 돌며 커졌다 작아져요 */
+.pet-anim.is-evolving {
+  animation: evolve 1.2s ease-in-out;
+}
+
+@keyframes evolve {
+  0% { transform: scale(1) rotate(0); filter: brightness(1); }
+  40% { transform: scale(0.6) rotate(360deg); filter: brightness(3); }
+  70% { transform: scale(1.25) rotate(720deg); filter: brightness(2); }
+  100% { transform: scale(1) rotate(720deg); filter: brightness(1); }
+}
+
+/* 쓰다듬기: 살짝 기울며 하트 */
+.pet-anim.is-petted {
+  animation: wiggle 0.5s ease-in-out;
+}
+
+@keyframes wiggle {
+  0%, 100% { transform: rotate(0); }
+  30% { transform: rotate(-8deg); }
+  70% { transform: rotate(8deg); }
+}
+
+/* ---------- 6. 효과 ---------- */
+.effect-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none; /* 효과가 클릭을 막지 않게 */
+}
+
+/* 날아와서 입으로 쏙 들어가는 음식 */
+.food {
+  position: absolute;
+  left: 50%;
+  top: 72%;
+  font-size: 30px;
+  animation: food-fly 0.8s ease-in forwards;
+}
+
+@keyframes food-fly {
+  0% { transform: translate(-150px, 30px) scale(1.2) rotate(-30deg); opacity: 0; }
+  20% { opacity: 1; }
+  80% { transform: translate(-50%, -50%) scale(0.9) rotate(10deg); opacity: 1; }
+  100% { transform: translate(-50%, -50%) scale(0.1); opacity: 0; }
+}
+
+/* 위로 떠오르며 사라지는 글자 (+20 XP, 💕 등) */
+.float-text {
+  position: absolute;
+  left: 50%;
+  top: 55%;
+  transform: translateX(-50%);
+  font-family: "Press Start 2P", monospace;
+  font-size: 12px;
+  white-space: nowrap;
+  color: var(--pink-deep);
+  text-shadow: 2px 2px 0 #fff;
+  animation: float-up 1.2s ease-out forwards;
+}
+
+.float-text.is-minus {
+  color: #7a6aa8;
+}
+
+.float-text.is-emoji {
+  font-family: inherit;
+  font-size: 22px;
+}
+
+@keyframes float-up {
+  0% { transform: translate(-50%, 0); opacity: 0; }
+  15% { opacity: 1; }
+  100% { transform: translate(-50%, -70px); opacity: 0; }
+}
+
+/* 충격 받았을 때 머리 위 느낌표 */
+.shock-mark {
+  position: absolute;
+  left: calc(50% + 50px);
+  top: 46%;
+  font-family: "Press Start 2P", monospace;
+  font-size: 22px;
+  color: #e5577e;
+  animation: shock-pop 1s ease-out forwards;
+}
+
+@keyframes shock-pop {
+  0% { transform: scale(0); opacity: 0; }
+  20% { transform: scale(1.4); opacity: 1; }
+  40% { transform: scale(1); }
+  100% { transform: scale(1); opacity: 0; }
+}
+
+/* 진화 배너 */
+.evolve-banner {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  padding: 10px 16px;
+  background: var(--ink);
+  color: var(--yellow);
+  border-radius: 10px;
+  font-family: "Press Start 2P", monospace;
+  font-size: 13px;
+  white-space: nowrap;
+  box-shadow: 0 0 0 3px #fff;
+  animation: banner 2s ease-in-out forwards;
+}
+
+@keyframes banner {
+  0% { transform: translate(-50%, -50%) scale(0); opacity: 0; }
+  15% { transform: translate(-50%, -50%) scale(1.2); opacity: 1; }
+  25%, 80% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+  100% { transform: translate(-50%, -80%) scale(1); opacity: 0; }
+}
+
+/* 폭죽(색종이) 레이어: 화면 전체를 덮지만 클릭은 통과 */
+.confetti-layer {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 50;
+}
+
+/* 색종이 한 조각: 위치/속도/색은 app.js가 CSS 변수로 넣어 줘요 */
+.confetti {
+  position: absolute;
+  top: -20px;
+  left: var(--x);
+  width: var(--w, 8px);
+  height: var(--h, 12px);
+  background: var(--color);
+  border-radius: 2px;
+  animation: confetti-fall var(--dur) cubic-bezier(0.25, 0.6, 0.5, 1) var(--delay) forwards;
+}
+
+@keyframes confetti-fall {
+  0% { transform: translate(0, 0) rotate(0); opacity: 1; }
+  100% { transform: translate(var(--dx), 110vh) rotate(var(--rot)); opacity: 0.9; }
+}
+
+/* ---------- 7. 할 일 패널 ---------- */
+.panel {
+  padding: 18px;
+  background: var(--card);
+  border: 3px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 10px 30px rgba(205, 180, 219, 0.3);
+}
+
+/* 입력 폼 */
+.todo-form {
+  display: flex;
+  gap: 8px;
+}
+
+.todo-form__input {
+  flex: 1;
+  min-width: 0; /* 좁은 화면에서 입력창이 넘치지 않게 */
+  padding: 12px 14px;
+  font-size: 16px; /* 16px 미만이면 아이폰에서 자동 확대돼요 */
+  background: #fff9fc;
+  border: 3px solid var(--pink);
+  border-radius: var(--radius-sm);
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.todo-form__input:focus {
+  border-color: var(--pink-deep);
+}
+
+.todo-form__input.is-error {
+  animation: shake 0.4s linear;
+  border-color: #e5577e;
+}
+
+.todo-form__btn {
+  padding: 0 18px;
+  font-size: 16px;
+  color: #fff;
+  background: var(--pink-deep);
+  border: 0;
+  border-radius: var(--radius-sm);
+  box-shadow: 0 4px 0 #d9779b;
+  transition: transform 0.08s, box-shadow 0.08s;
+}
+
+.todo-form__btn:active {
+  transform: translateY(4px);
+  box-shadow: 0 0 0 #d9779b;
+}
+
+/* 필터 버튼 */
+.filters {
+  display: flex;
+  gap: 6px;
+  margin: 16px 0 10px;
+}
+
+.filter {
+  flex: 1;
+  padding: 8px 4px;
+  font-size: 14px;
+  background: #f8f3fa;
+  border: 2px solid transparent;
+  border-radius: 999px;
+  color: var(--ink-soft);
+  transition: background 0.2s, color 0.2s;
+}
+
+.filter.is-active {
+  background: var(--lavender);
+  border-color: #b79bc9;
+  color: var(--ink);
+}
+
+.filter__count {
+  display: inline-block;
+  min-width: 20px;
+  margin-left: 2px;
+  padding: 1px 6px;
+  font-size: 12px;
+  background: rgba(255, 255, 255, 0.8);
+  border-radius: 999px;
+}
+
+/* 할 일 목록 */
+.todo-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.todo-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 10px 10px 12px;
+  background: #fffafc;
+  border: 2px solid var(--line);
+  border-radius: var(--radius-sm);
+  animation: item-in 0.25s ease-out;
+}
+
+@keyframes item-in {
+  from { transform: translateY(-6px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.todo-item.is-done {
+  background: #f2fbf6;
+  border-color: #d4f0e1;
+}
+
+/* 삭제될 때 옆으로 휙 사라지기 */
+.todo-item.is-removing {
+  animation: item-out 0.3s ease-in forwards;
+}
+
+@keyframes item-out {
+  to { transform: translateX(60px); opacity: 0; }
+}
+
+/* 커스텀 체크박스: 진짜 체크박스는 숨기고 예쁜 상자를 대신 보여 줘요 */
+.todo-check {
+  position: relative;
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  cursor: pointer;
+}
+
+.todo-check__input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0; /* 보이지 않지만 클릭/키보드는 동작 */
+  cursor: pointer;
+}
+
+.todo-check__box {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  background: #fff;
+  border: 3px solid var(--mint);
+  border-radius: 8px;
+  transition: background 0.15s;
+}
+
+.todo-check__input:checked + .todo-check__box {
+  background: var(--mint);
+}
+
+/* 체크되면 ✓ 표시 */
+.todo-check__input:checked + .todo-check__box::after {
+  content: "✓";
+  font-size: 16px;
+  color: #fff;
+}
+
+.todo-check__input:focus-visible + .todo-check__box {
+  outline: 3px solid var(--pink-deep);
+  outline-offset: 2px;
+}
+
+.todo-text {
+  flex: 1;
+  min-width: 0;
+  font-size: 16px;
+  line-height: 1.35;
+  word-break: break-word; /* 긴 영어/숫자도 줄바꿈 */
+}
+
+.todo-item.is-done .todo-text {
+  color: var(--ink-soft);
+  text-decoration: line-through;
+  text-decoration-color: var(--mint);
+  text-decoration-thickness: 2px;
+}
+
+/* 수정 중 입력창 */
+.todo-edit {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 8px;
+  font-size: 16px;
+  border: 2px solid var(--lavender);
+  border-radius: 8px;
+  outline: none;
+}
+
+.todo-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.icon-btn {
+  width: 34px;
+  height: 34px;
+  font-size: 15px;
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  transition: background 0.15s;
+}
+
+.icon-btn:hover {
+  background: #f3ebf7;
+}
+
+.icon-btn--danger:hover {
+  background: #ffe1e8;
+}
+
+/* 수정 중일 때는 수정 버튼을 숨겨요 */
+.todo-item.is-editing [data-action="edit"] {
+  visibility: hidden;
+}
+
+.empty {
+  margin: 18px 0 8px;
+  text-align: center;
+  color: var(--ink-soft);
+  font-size: 15px;
+}
+
+.panel__footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 6px;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 2px dashed var(--line);
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+/* 패널 아래 사용자 이름 + 로그아웃 버튼 */
+.user-box {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.link-btn {
+  padding: 2px 8px;
+  font-size: 12px;
+  color: var(--ink-soft);
+  background: #f8f3fa;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+}
+
+.link-btn:hover {
+  color: var(--ink);
+  background: var(--lavender);
+}
+
+/* ---------- 7-1. 로그인 화면 (게이트) ---------- */
+.login-gate {
+  position: fixed;
+  inset: 0;
+  z-index: 100; /* 모든 것 위에 */
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(253, 240, 246, 0.82);
+  backdrop-filter: blur(6px); /* 뒤쪽 게임 화면을 흐릿하게 */
+}
+
+/* hidden 속성이 display: grid에 덮이지 않도록 */
+.login-gate[hidden] {
+  display: none;
+}
+
+.login-card {
+  width: 100%;
+  max-width: 380px;
+  padding: 28px 24px 22px;
+  text-align: center;
+  background: #fff;
+  border: 4px solid var(--shell-edge);
+  border-radius: var(--radius-lg);
+  box-shadow:
+    0 8px 0 var(--shell-edge),
+    0 18px 40px rgba(244, 151, 182, 0.35);
+}
+
+.login-card__egg {
+  font-size: 54px;
+  animation: idle-bob 2.2s ease-in-out infinite;
+}
+
+.login-card__title {
+  margin: 8px 0 10px;
+  font-family: "Press Start 2P", monospace;
+  font-size: 18px;
+  font-weight: normal;
+  color: #fff;
+  text-shadow:
+    2px 2px 0 var(--pink-deep),
+    -1px -1px 0 var(--pink-deep);
+}
+
+.login-card__desc {
+  margin: 0 0 20px;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--ink-soft);
+  word-break: keep-all;
+}
+
+.login-btn {
+  display: block;
+  width: 100%;
+  margin-top: 10px;
+  padding: 13px 14px;
+  font-size: 16px;
+  color: #fff;
+  background: var(--pink-deep);
+  border: 0;
+  border-radius: var(--radius-sm);
+  box-shadow: 0 4px 0 #d9779b;
+  transition: transform 0.08s, box-shadow 0.08s, opacity 0.2s;
+}
+
+.login-btn:active {
+  transform: translateY(4px);
+  box-shadow: 0 0 0 #d9779b;
+}
+
+.login-btn:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+
+.login-btn--ghost {
+  color: var(--ink);
+  background: #f8f3fa;
+  box-shadow: 0 4px 0 var(--lavender);
+}
+
+.login-btn--ghost small {
+  color: var(--ink-soft);
+}
+
+/* --- 아이디 로그인 / 계정 만들기 폼 --- */
+.id-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  text-align: left;
+}
+
+/* 로그인 | 계정 만들기 탭 */
+.id-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  margin-bottom: 4px;
+  background: #f8f3fa;
+  border-radius: 999px;
+}
+
+.id-tab {
+  flex: 1;
+  padding: 8px 4px;
+  font-size: 14px;
+  color: var(--ink-soft);
+  background: transparent;
+  border: 0;
+  border-radius: 999px;
+  transition: background 0.2s, color 0.2s;
+}
+
+.id-tab.is-active {
+  color: var(--ink);
+  background: #fff;
+  box-shadow: 0 2px 6px rgba(205, 180, 219, 0.5);
+}
+
+.id-input {
+  width: 100%;
+  padding: 11px 13px;
+  font-size: 16px; /* 16px 미만이면 아이폰에서 자동 확대돼요 */
+  background: #fff9fc;
+  border: 2px solid var(--pink);
+  border-radius: var(--radius-sm);
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.id-input:focus {
+  border-color: var(--pink-deep);
+}
+
+/* 로그인 탭에서는 '비밀번호 확인'과 '남은 자리'를 숨겨요 */
+.id-form:not([data-mode="signup"]) .signup-only {
+  display: none;
+}
+
+.slot-info {
+  min-height: 1.2em;
+  margin: 0;
+  font-size: 13px;
+  text-align: center;
+  color: var(--ink-soft);
+}
+
+/* 폼 안의 버튼은 위 여백을 gap이 맡아요 */
+.id-form .login-btn {
+  margin-top: 4px;
+}
+
+/* '또는' 구분선 */
+.login-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 18px 0 4px;
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+.login-divider::before,
+.login-divider::after {
+  content: "";
+  flex: 1;
+  height: 2px;
+  background: var(--line);
+}
+
+/* 로그인 상태 확인 중에는 버튼과 입력 폼을 숨겨요 */
+.login-gate.is-checking .login-btn,
+.login-gate.is-checking .id-form,
+.login-gate.is-checking .login-divider {
+  display: none;
+}
+
+/* 작은 화면에서 로그인 카드가 화면보다 길면 스크롤 */
+.login-gate {
+  overflow-y: auto;
+}
+
+.login-card__msg {
+  min-height: 1.4em;
+  margin: 14px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #c2456b;
+  word-break: keep-all;
+}
+
+/* ---------- 8. 미니 다마고치 (게임기가 안 보일 때 따라다녀요) ---------- */
+.mini-pet {
+  position: fixed;
+  right: 14px;
+  bottom: 14px;
+  z-index: 45;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 12px 9px;
+  background: var(--lcd);
+  border: 3px solid var(--shell-edge);
+  border-radius: 22px;
+  box-shadow:
+    0 5px 0 var(--shell-edge),
+    0 10px 20px rgba(244, 151, 182, 0.35);
+  /* 평소에는 화면 아래로 숨어 있다가 */
+  transform: translateY(160%);
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1),
+    opacity 0.25s,
+    background-color 0.4s;
+}
+
+/* 게임기가 화면 밖으로 나가면 통통 튀어 올라와요 */
+.mini-pet.is-shown {
+  transform: translateY(0);
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* 다크서클 상태면 미니 화면도 칙칙하게 */
+.mini-pet.is-tired {
+  background-color: #dde3d3;
+}
+
+.mini-pet__body {
+  display: block;
+}
+
+/* 미니 캐릭터는 픽셀 한 칸을 4px로 작게 */
+.pixel-grid--mini {
+  --px: 4px;
+}
+
+/* 미니 XP 게이지 */
+.mini-pet__xp {
+  display: block;
+  width: 64px;
+  height: 8px;
+  padding: 1px;
+  background: #fff;
+  border: 2px solid var(--ink);
+  border-radius: 5px;
+}
+
+.mini-pet__xp-fill {
+  display: block;
+  height: 100%;
+  width: 0%;
+  background: var(--pink-deep);
+  border-radius: 3px;
+  transition: width 0.6s ease-out;
+}
+
+/* 미니 말풍선: 미니 캐릭터 위쪽에 잠깐 나타나요 */
+.mini-pet__bubble {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 12px);
+  width: max-content;
+  max-width: min(230px, calc(100vw - 32px));
+  padding: 8px 11px;
+  background: #fff;
+  border: 2px solid var(--ink);
+  border-radius: 12px;
+  font-size: 13px;
+  line-height: 1.35;
+  text-align: left;
+  word-break: keep-all;
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity 0.2s, transform 0.2s;
+  pointer-events: none;
+}
+
+/* 말풍선 꼬리 */
+.mini-pet__bubble::after {
+  content: "";
+  position: absolute;
+  right: 30px;
+  bottom: -8px;
+  border-style: solid;
+  border-width: 8px 6px 0;
+  border-color: var(--ink) transparent transparent;
+}
+
+.mini-pet.is-talking .mini-pet__bubble {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* 카운트다운 숫자 배지 (왼쪽 위 모서리) */
+.mini-pet__countdown {
+  position: absolute;
+  top: -14px;
+  left: -14px;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  font-family: "Press Start 2P", monospace;
+  font-size: 14px;
+  color: #fff;
+  background: var(--pink-deep);
+  border: 3px solid #fff;
+  border-radius: 50%;
+  box-shadow: 0 3px 8px rgba(244, 151, 182, 0.6);
+}
+
+/* display: grid가 hidden 속성을 덮어쓰지 않도록 따로 지정 */
+.mini-pet__countdown[hidden] {
+  display: none;
+}
+
+.mini-pet__countdown.is-pop {
+  animation: pop 0.35s ease-out;
+}
+
+/* 미니 효과 레이어 (+20 XP 글자) */
+.mini-pet__effects {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.mini-pet__effects .float-text {
+  top: 30%;
+  font-size: 10px;
+}
+
+/* ---------- 9. 시연용 초기화 버튼 ---------- */
+.reset-btn {
+  position: fixed;
+  left: 14px; /* 오른쪽 아래는 미니 다마고치 자리라서 왼쪽으로 */
+  bottom: 14px;
+  z-index: 40;
+  padding: 7px 12px;
+  font-size: 12px;
+  color: var(--ink-soft);
+  background: rgba(255, 255, 255, 0.85);
+  border: 2px dashed var(--lavender);
+  border-radius: 999px;
+  opacity: 0.75;
+  transition: opacity 0.2s;
+}
+
+.reset-btn:hover {
+  opacity: 1;
+}
+
+/* ---------- 10. 반응형 / 움직임 줄이기 ---------- */
+
+/* 아주 좁은 화면(작은 휴대폰): 캐릭터와 여백을 조금 줄여요 */
+@media (max-width: 360px) {
+  :root {
+    --px: 7px;
+  }
+
+  .device {
+    padding: 18px 14px 14px;
+  }
+
+  .xp__text {
+    min-width: 80px;
+    font-size: 8px;
+  }
+}
+
+/* 넓은 화면(태블릿/PC): 캐릭터를 조금 더 크게 */
+@media (min-width: 600px) {
+  :root {
+    --px: 9px;
+  }
+
+  .app {
+    padding-top: 40px;
+  }
+}
+
+/*
+  창이 충분히 넓으면(900px 이상) 2단 배치
+  - 왼쪽: 게임기 (스크롤해도 화면에 붙어 있어요 = sticky)
+  - 오른쪽: 할 일 목록
+  - PC, 태블릿 가로 화면, 큰 창 어디서든 창 너비만 보고 자동으로 바뀌어요.
+  - 게임기가 항상 보이므로 미니 다마고치와 카운트다운 없이 바로 반응해요.
+*/
+@media (min-width: 900px) {
+  .app {
+    max-width: 1080px;
+    display: grid;
+    grid-template-columns: minmax(400px, 460px) minmax(0, 1fr);
+    align-items: start;
+    gap: 32px;
+    padding: 40px 24px 96px;
+  }
+
+  .device {
+    position: sticky;
+    top: 24px;
+  }
+}
+
+/* 사용자가 '움직임 줄이기'를 켰다면 애니메이션을 최소화해요 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

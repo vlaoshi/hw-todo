@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <!-- 문서 기본 설정: 한글이 깨지지 않도록 UTF-8, 모바일 화면 폭에 맞춤 -->
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <!--
+    보안 설정 1) 콘텐츠 보안 정책 (CSP, Content Security Policy)
+    - 브라우저에게 "이 사이트는 아래에 적힌 곳의 파일만 쓰고, 아래에 적힌 곳으로만 통신한다"고 알려 줘요.
+    - 누군가 악성 코드를 끼워 넣어도 실행되지 않고, 데이터를 다른 곳으로 빼돌릴 수도 없어요.
+    - script-src : 자바스크립트는 내 사이트 + Firebase SDK(gstatic)만
+    - style-src / font-src : 디자인은 내 사이트 + 구글 폰트만
+    - connect-src : 통신은 Firebase 로그인·데이터베이스 서버만
+    - object-src 'none' : 플래시 같은 옛날 플러그인 금지
+  -->
+  <meta
+    http-equiv="Content-Security-Policy"
+    content="default-src 'self';
+             script-src 'self' https://www.gstatic.com;
+             style-src 'self' https://fonts.googleapis.com;
+             font-src https://fonts.gstatic.com;
+             img-src 'self' data:;
+             connect-src 'self' https://firestore.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com;
+             frame-src https://hw-todo-7efc9.firebaseapp.com;
+             object-src 'none';
+             base-uri 'self';
+             form-action 'self'"
+  />
+
+  <!--
+    보안 설정 2) 리퍼러 정책
+    - 다른 사이트로 요청할 때 '전체 주소' 대신 '사이트 주소(도메인)'만 알려 줘요.
+  -->
+  <meta name="referrer" content="strict-origin-when-cross-origin" />
+
+  <title>다마고치 투두</title>
+
+  <!-- 브라우저 탭 아이콘: 파일 없이 알 이모지로 바로 만들어요 -->
+  <link
+    rel="icon"
+    href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🥚%3C/text%3E%3C/svg%3E"
+  />
+
+  <!-- 구글 폰트: 귀여운 한글 폰트(Jua) + 레트로 숫자 폰트(Press Start 2P) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Jua&family=Press+Start+2P&display=swap"
+    rel="stylesheet"
+  />
+
+  <!-- 디자인(CSS) 파일 연결 -->
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <main class="app">
+    <!-- =====================================================
+         1. 다마고치 게임기 영역 (화면 상단)
+         ===================================================== -->
+    <section class="device" aria-label="다마고치 게임기">
+      <!-- 게임기 위쪽 로고 -->
+      <div class="device__brand">
+        <span class="device__logo">TAMA-DO</span>
+        <span class="device__sub">할 일을 먹고 자라요</span>
+      </div>
+
+      <!-- LCD 화면: 레벨, XP 게이지, 말풍선, 캐릭터가 모두 이 안에 들어가요 -->
+      <div class="screen" id="screen">
+        <!-- 상단 상태줄: 레벨 + 진화 단계 이름 + 남은 할 일 수 -->
+        <div class="screen__status">
+          <span class="level" id="levelText">Lv.1</span>
+          <span class="stage-name" id="stageName">알</span>
+          <span class="hunger" id="hungerText" title="미완료 할 일 수">🍽️ 0</span>
+        </div>
+
+        <!-- 경험치(XP) 게이지 바 -->
+        <div class="xp">
+          <div
+            class="xp__bar"
+            role="progressbar"
+            aria-label="경험치"
+            aria-valuemin="0"
+            aria-valuemax="100"
+            aria-valuenow="0"
+            id="xpBar"
+          >
+            <div class="xp__fill" id="xpFill"></div>
+          </div>
+          <span class="xp__text" id="xpText">0 / 40 XP</span>
+        </div>
+
+        <!-- 말풍선: aria-live 덕분에 화면낭독기도 대사를 읽어줘요 -->
+        <div class="bubble" id="bubble" aria-live="polite">
+          <span id="bubbleText">...</span>
+        </div>
+
+        <!-- 캐릭터 무대 -->
+        <div class="pet-stage">
+          <!-- pet-wrap: 둥실둥실 떠 있는 기본 애니메이션 담당 -->
+          <div class="pet-wrap">
+            <!-- pet: 기쁨/충격/진화 같은 반응 애니메이션 담당 (눌러서 쓰다듬기 가능) -->
+            <button type="button" class="pet pet-anim" id="pet" aria-label="다마고치 쓰다듬기">
+              <!-- 16×16 픽셀 칸은 app.js가 자동으로 만들어 넣어요 -->
+              <span class="pixel-grid" id="pixelGrid"></span>
+            </button>
+          </div>
+          <div class="pet-shadow"></div>
+        </div>
+
+        <!-- 효과 레이어: 날아오는 음식, +20 XP 글자, 진화 배너 등이 여기에 잠깐 나타나요 -->
+        <div class="effect-layer" id="effectLayer" aria-hidden="true"></div>
+      </div>
+
+      <!-- 게임기 아래쪽 동그란 버튼 3개 -->
+      <div class="device__buttons">
+        <button type="button" class="device-btn" id="btnPet" aria-label="쓰다듬기">A</button>
+        <button type="button" class="device-btn" id="btnTalk" aria-label="말 걸기">B</button>
+        <button type="button" class="device-btn" id="btnSound" aria-label="소리 켜기/끄기">C</button>
+      </div>
+      <p class="device__hint">
+        A 쓰다듬기 · B 말 걸기 · C 소리 <span id="soundState">켜짐</span>
+      </p>
+    </section>
+
+    <!-- =====================================================
+         2. 할 일(To-Do) 패널 영역
+         ===================================================== -->
+    <section class="panel" aria-label="할 일 목록">
+      <!-- 할 일 입력 폼 -->
+      <form class="todo-form" id="todoForm" autocomplete="off">
+        <label for="todoInput" class="sr-only">새 할 일</label>
+        <input
+          type="text"
+          id="todoInput"
+          class="todo-form__input"
+          maxlength="60"
+          placeholder="할 일을 적고 밥을 주세요! 🍎"
+        />
+        <button type="submit" class="todo-form__btn">추가</button>
+      </form>
+
+      <!-- 필터 버튼: 전체 / 진행중 / 완료 -->
+      <div class="filters" role="group" aria-label="할 일 필터">
+        <button type="button" class="filter is-active" data-filter="all" aria-pressed="true">
+          전체 <span class="filter__count" id="countAll">0</span>
+        </button>
+        <button type="button" class="filter" data-filter="active" aria-pressed="false">
+          진행중 <span class="filter__count" id="countActive">0</span>
+        </button>
+        <button type="button" class="filter" data-filter="done" aria-pressed="false">
+          완료 <span class="filter__count" id="countDone">0</span>
+        </button>
+      </div>
+
+      <!-- 할 일 목록: app.js가 <li>를 만들어 채워요 -->
+      <ul class="todo-list" id="todoList"></ul>
+
+      <!-- 목록이 비었을 때 보여 줄 안내 문구 -->
+      <p class="empty" id="emptyMessage" hidden></p>
+
+      <!-- 패널 아래쪽 안내 -->
+      <footer class="panel__footer">
+        <span>✅ 완료 +20 · ↩️ 해제 -20 · 🗑️ 포기 -10</span>
+        <span class="user-box">
+          <span id="userInfo">👤</span>
+          <button type="button" class="link-btn" id="logoutBtn">로그아웃</button>
+        </span>
+      </footer>
+    </section>
+  </main>
+
+  <!--
+    미니 다마고치 (오른쪽 아래)
+    - 게임기가 화면 밖으로 나가면 나타나서 따라다녀요.
+    - 할 일을 완료하면 3초 카운트다운을 보여 주고, 0이 되면 게임기 화면으로 올라가요.
+    - 누르면 바로 게임기 화면으로 이동해요.
+  -->
+  <button type="button" class="mini-pet" id="miniPet" aria-label="게임기 화면으로 이동" aria-hidden="true" tabindex="-1">
+    <!-- 미니 말풍선 -->
+    <span class="mini-pet__bubble" id="miniBubble"></span>
+    <!-- 카운트다운 숫자 배지 -->
+    <span class="mini-pet__countdown" id="miniCountdown" hidden>3</span>
+    <!-- 작은 캐릭터 (픽셀 칸은 app.js가 만들어요) -->
+    <span class="mini-pet__body pet-anim" id="miniPetBody">
+      <span class="pixel-grid pixel-grid--mini" id="miniGrid"></span>
+    </span>
+    <!-- 작은 XP 게이지 -->
+    <span class="mini-pet__xp"><span class="mini-pet__xp-fill" id="miniXpFill"></span></span>
+    <!-- +20 XP 같은 글자가 떠오르는 곳 -->
+    <span class="mini-pet__effects" id="miniEffects" aria-hidden="true"></span>
+  </button>
+
+  <!-- 시연용 초기화 버튼 (왼쪽 아래 구석) -->
+  <button type="button" class="reset-btn" id="resetBtn" title="XP와 할 일을 모두 지우고 알부터 다시 시작해요">
+    ↺ 초기화
+  </button>
+
+  <!-- 진화 축하 폭죽(색종이)이 떨어지는 전체 화면 레이어 -->
+  <div class="confetti-layer" id="confettiLayer" aria-hidden="true"></div>
+
+  <!--
+    로그인 화면 (게이트)
+    - 앱을 열면 가장 먼저 보여요. 로그인하거나 체험하기를 누르면 사라져요.
+    - is-checking: Firebase가 로그인 상태를 확인하는 동안 버튼을 숨겨요.
+  -->
+  <div class="login-gate is-checking" id="loginGate">
+    <div class="login-card" role="dialog" aria-modal="true" aria-labelledby="loginTitle">
+      <div class="login-card__egg" aria-hidden="true">🥚</div>
+      <h1 class="login-card__title" id="loginTitle">TAMA-DO</h1>
+      <p class="login-card__desc">
+        할 일을 완료하면 다마고치가 자라요!<br />
+        로그인하면 어느 기기에서든 이어서 키울 수 있어요.
+      </p>
+      <!--
+        아이디 로그인 / 계정 만들기 폼
+        - data-mode="login" 이면 로그인, "signup" 이면 계정 만들기
+        - signup-only 클래스가 붙은 칸은 계정 만들기일 때만 보여요.
+      -->
+      <form class="id-form" id="idForm" data-mode="login" novalidate>
+        <div class="id-tabs" role="tablist" aria-label="로그인 방식">
+          <button type="button" class="id-tab is-active" data-mode="login" role="tab" aria-selected="true">로그인</button>
+          <button type="button" class="id-tab" data-mode="signup" role="tab" aria-selected="false">계정 만들기</button>
+        </div>
+
+        <label class="sr-only" for="idInput">아이디</label>
+        <input
+          type="text"
+          id="idInput"
+          class="id-input"
+          placeholder="아이디 (영문 소문자·숫자·_ 4~12자)"
+          maxlength="12"
+          autocomplete="username"
+          autocapitalize="off"
+          spellcheck="false"
+        />
+
+        <label class="sr-only" for="pwInput">비밀번호</label>
+        <input
+          type="password"
+          id="pwInput"
+          class="id-input"
+          placeholder="비밀번호 (6자 이상)"
+          autocomplete="current-password"
+        />
+
+        <label class="sr-only signup-only" for="pwConfirmInput">비밀번호 확인</label>
+        <input
+          type="password"
+          id="pwConfirmInput"
+          class="id-input signup-only"
+          placeholder="비밀번호 확인"
+          autocomplete="new-password"
+        />
+
+        <!-- 계정 만들기 탭에서 '남은 자리 n / 20' 표시 -->
+        <p class="slot-info signup-only" id="slotInfo"></p>
+
+        <button type="submit" class="login-btn" id="idSubmitBtn">로그인</button>
+      </form>
+
+      <!-- 구분선 -->
+      <div class="login-divider"><span>또는</span></div>
+
+      <button type="button" class="login-btn login-btn--ghost" id="guestBtn">
+        로그인 없이 체험하기 <small>(이 브라우저에만 저장)</small>
+      </button>
+      <!-- 안내 문구: 처음 문구는 JavaScript가 실행되면 바뀌어요.
+           계속 이 문구가 보이면 JavaScript(모듈)가 실행되지 않은 거예요. -->
+      <p class="login-card__msg" id="loginMessage" role="status">
+        로그인 확인 중… 이 문구가 계속 보이면 파일을 더블클릭하지 말고
+        Live Server 같은 로컬 서버로 열어 주세요.
+      </p>
+    </div>
+  </div>
+
+  <!--
+    JavaScript 파일 연결
+    - type="module": app.js 안에서 Firebase를 import로 불러오기 위해 필요해요.
+    - 모듈은 보안 정책상 파일을 더블클릭(file://)해서 열면 실행되지 않아요.
+      → VS Code의 Live Server 확장으로 열거나, 터미널에서 로컬 서버를 켜고 http://localhost 주소로 열어 주세요.
+  -->
+  <script type="module" src="app.js"></script>
+</body>
+</html>
